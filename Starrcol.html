@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>⭐ Звёздный сборщик — космическая аркада</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at center, #0a0f2a, #03050b);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', 'Segoe UI', monospace;
+            touch-action: none;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(0,0,0,0.4);
+            border-radius: 48px;
+            padding: 16px;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 28px;
+            box-shadow: 0 0 0 3px rgba(255,215,0,0.3), 0 15px 35px black;
+            cursor: none;
+            width: 100%;
+            height: auto;
+            background: #010118;
+        }
+        .info-panel {
+            margin-top: 16px;
+            display: flex;
+            gap: 30px;
+            background: #000000aa;
+            backdrop-filter: blur(8px);
+            padding: 8px 25px;
+            border-radius: 60px;
+            color: gold;
+            font-weight: bold;
+            font-size: 1.3rem;
+            font-family: monospace;
+        }
+        .info-panel span {
+            color: white;
+            margin-left: 8px;
+        }
+        .controls-hint {
+            margin-top: 12px;
+            font-size: 0.7rem;
+            color: #aaa;
+            background: #00000077;
+            padding: 5px 12px;
+            border-radius: 50px;
+            text-align: center;
+        }
+        @media (max-width: 600px) {
+            .info-panel { font-size: 1rem; gap: 20px; padding: 5px 18px; }
+            .controls-hint { font-size: 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="game-container">
+        <canvas id="spaceCanvas" width="500" height="700"></canvas>
+        <div class="info-panel">
+            <div>⭐ <span id="scoreValue">0</span></div>
+            <div>❤️ <span id="livesValue">3</span></div>
+            <div>🏆 <span id="recordValue">0</span></div>
+        </div>
+        <div class="controls-hint">
+            🖱️ Мышь / палец → двигай корабль | ← → стрелки | Собирай звёзды, избегай астероидов
+        </div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- НАСТРОЙКИ ----------
+        const canvas = document.getElementById('spaceCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Явный размер canvas (фиксированное разрешение)
+        canvas.width = 500;
+        canvas.height = 700;
+        const cw = canvas.width;
+        const ch = canvas.height;
+        
+        // Игровые переменные
+        let score = 0;
+        let lives = 3;
+        let gameActive = true;
+        let record = localStorage.getItem('spaceRecord') ? parseInt(localStorage.getItem('spaceRecord')) : 0;
+        document.getElementById('recordValue').innerText = record;
+        
+        // Корабль (позиция X, Y фиксирован)
+        const ship = {
+            x: cw/2,
+            y: ch - 60,
+            width: 32,
+            height: 32,
+            radius: 18
+        };
+        
+        // Объекты: звёзды (очки) и астероиды (потеря жизни)
+        let stars = [];
+        let asteroids = [];
+        
+        // Скорость падения (увеличивается со временем)
+        let fallSpeed = 3.2;
+        let baseSpeed = 3.2;
+        let difficultyCounter = 0;
+        
+        // Генерация объектов (через кадры)
+        let frameCounter = 0;
+        let starSpawnGap = 28;   // звёзды чаще
+        let asteroidSpawnGap = 45;
+        
+        // Для управления сенсором/мышкой
+        let mouseX = ship.x;
+        
+        // ---------- ФУНКЦИИ ----------
+        function updateUI() {
+            document.getElementById('scoreValue').innerText = score;
+            document.getElementById('livesValue').innerText = lives;
+            if (score > record) {
+                record = score;
+                localStorage.setItem('spaceRecord', record);
+                document.getElementById('recordValue').innerText = record;
+            }
+        }
+        
+        // Спавн звезды
+        function spawnStar() {
+            stars.push({
+                x: Math.random() * (cw - 20) + 10,
+                y: -20,
+                radius: 8,
+                value: 1
+            });
+        }
+        
+        // Спавн астероида
+        function spawnAsteroid() {
+            asteroids.push({
+                x: Math.random() * (cw - 30) + 15,
+                y: -30,
+                radius: 14,
+                damage: 1
+            });
+        }
+        
+        // Обновление позиций и столкновений
+        function updateGame() {
+            if (!gameActive) return;
+            
+            // 1. Двигаем звёзды
+            for (let i=0; i<stars.length; i++) {
+                stars[i].y += fallSpeed;
+            }
+            stars = stars.filter(s => s.y - s.radius < ch + 50);
+            
+            // 2. Двигаем астероиды
+            for (let i=0; i<asteroids.length; i++) {
+                asteroids[i].y += fallSpeed;
+            }
+            asteroids = asteroids.filter(a => a.y - a.radius < ch + 50);
+            
+            // 3. Проверка столкновений: корабль со звездами
+            for (let i=0; i<stars.length; i++) {
+                const star = stars[i];
+                const dx = ship.x - star.x;
+                const dy = ship.y - star.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < ship.radius + star.radius) {
+                    stars.splice(i,1);
+                    score++;
+                    updateUI();
+                    // звук (короткий)
+                    playBeep(1200, 0.06);
+                    i--;
+                }
+            }
+            
+            // 4. Проверка столкновений с астероидами
+            for (let i=0; i<asteroids.length; i++) {
+                const asteroid = asteroids[i];
+                const dx = ship.x - asteroid.x;
+                const dy = ship.y - asteroid.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < ship.radius + asteroid.radius) {
+                    asteroids.splice(i,1);
+                    lives--;
+                    updateUI();
+                    playBeep(220, 0.25);
+                    if (lives <= 0) {
+                        gameActive = false;
+                        return;
+                    }
+                    i--;
+                }
+            }
+            
+            // 5. Увеличение сложности: скорость падения растёт со счётом
+            difficultyCounter++;
+            if (difficultyCounter > 30) {
+                difficultyCounter = 0;
+                if (fallSpeed < 8.5) {
+                    fallSpeed = baseSpeed + (score / 450);
+                    if (fallSpeed > 8.5) fallSpeed = 8.5;
+                }
+                // спавн учащается
+                if (score > 30 && starSpawnGap > 18) starSpawnGap = 22;
+                if (score > 70 && starSpawnGap > 16) starSpawnGap = 18;
+                if (score > 30 && asteroidSpawnGap > 32) asteroidSpawnGap = 38;
+            }
+            
+            // 6. Генерация новых объектов
+            frameCounter++;
+            if (frameCounter >= starSpawnGap) {
+                frameCounter = 0;
+                spawnStar();
+                // двойная звезда иногда
+                if (Math.random() < 0.25 && fallSpeed > 4) spawnStar();
+            }
+            if (Math.random() < 0.018 && gameActive) { // независимый шанс астероида
+                spawnAsteroid();
+            }
+        }
+        
+        // ---------- ОТРИСОВКА ----------
+        function drawBackground() {
+            // Глубокий космос
+            const grad = ctx.createLinearGradient(0, 0, 0, ch);
+            grad.addColorStop(0, '#010118');
+            grad.addColorStop(1, '#0a0f2a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, cw, ch);
+            // Звёздное небо (статические точки)
+            for (let i=0; i<150; i++) {
+                if (i%2 === 0) continue;
+                ctx.fillStyle = `rgba(255,255,200,${Math.random()*0.5+0.3})`;
+                ctx.beginPath();
+                ctx.arc( (i*131)%cw, (i*253)%ch, 1+ (i%3), 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+        
+        function drawStars() {
+            for (let s of stars) {
+                ctx.fillStyle = '#FFD966';
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#FFB347';
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius-3, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText('⭐', s.x-6, s.y+4);
+            }
+        }
+        
+        function drawAsteroids() {
+            for (let a of asteroids) {
+                ctx.fillStyle = '#7c5e3a';
+                ctx.shadowBlur = 6;
+                ctx.beginPath();
+                ctx.ellipse(a.x, a.y, a.radius, a.radius*0.8, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#4a3720';
+                ctx.beginPath();
+                ctx.ellipse(a.x-3, a.y-2, 3, 3, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#c97e3a';
+                for (let i=0;i<3;i++) ctx.fillRect(a.x-6+i*4, a.y-4, 2, 5);
+            }
+        }
+        
+        function drawShip() {
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = '#3cc7f2';
+            ctx.beginPath();
+            ctx.moveTo(ship.x, ship.y-18);
+            ctx.lineTo(ship.x-18, ship.y+8);
+            ctx.lineTo(ship.x-8, ship.y+4);
+            ctx.lineTo(ship.x-8, ship.y+12);
+            ctx.lineTo(ship.x, ship.y+16);
+            ctx.lineTo(ship.x+8, ship.y+12);
+            ctx.lineTo(ship.x+8, ship.y+4);
+            ctx.lineTo(ship.x+18, ship.y+8);
+            ctx.fill();
+            ctx.fillStyle = '#f9e45b';
+            ctx.beginPath();
+            ctx.arc(ship.x, ship.y-6, 8, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#2c3e66';
+            ctx.beginPath();
+            ctx.arc(ship.x-3, ship.y-9, 2, 0, Math.PI*2);
+            ctx.arc(ship.x+3, ship.y-9, 2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.fillRect(ship.x-1, ship.y-12, 2, 3);
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawUI() {
+            ctx.font = 'bold 20px "Courier New"';
+            ctx.fillStyle = '#fff5cc';
+            ctx.shadowBlur = 0;
+            ctx.fillText('SCORE: '+score, 15, 45);
+            if (!gameActive) {
+                ctx.font = 'bold 28px monospace';
+                ctx.fillStyle = '#ff8866';
+                ctx.shadowBlur = 2;
+                ctx.fillText('GAME OVER', cw/2-100, ch/2-50);
+                ctx.font = '16px monospace';
+                ctx.fillStyle = '#ffeeaa';
+                ctx.fillText('Нажми / коснись для рестарта', cw/2-135, ch/2+40);
+            }
+        }
+        
+        // Звук (короткий писк)
+        function playBeep(freq, duration) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.value = freq;
+                gain.gain.value = 0.08;
+                osc.type = 'sine';
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+        
+        // ---------- УПРАВЛЕНИЕ ----------
+        function moveShip(newX) {
+            if (!gameActive) return;
+            let targetX = newX;
+            if (targetX < ship.radius+5) targetX = ship.radius+5;
+            if (targetX > cw - ship.radius-5) targetX = cw - ship.radius-5;
+            ship.x = targetX;
+        }
+        
+        // Мышь / тач
+        function handleMove(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            let canvasX = (clientX - rect.left) * scaleX;
+            canvasX = Math.min(Math.max(canvasX, 10), cw-10);
+            moveShip(canvasX);
+        }
+        
+        let touchActive = false;
+        function onTouchStart(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            handleMove(touch.clientX, touch.clientY);
+            touchActive = true;
+        }
+        function onTouchMove(e) {
+            e.preventDefault();
+            if (!touchActive) return;
+            const touch = e.touches[0];
+            handleMove(touch.clientX, touch.clientY);
+        }
+        function onTouchEnd(e) {
+            e.preventDefault();
+            touchActive = false;
+        }
+        function onMouseMove(e) {
+            if (e.buttons !== 1) return; // левая кнопка зажата или движение мыши без клика
+            handleMove(e.clientX, e.clientY);
+        }
+        function onMouseDown(e) {
+            e.preventDefault();
+            handleMove(e.clientX, e.clientY);
+        }
+        
+        // Клавиатура (стрелки)
+        function onKeyDown(e) {
+            if (e.key === 'ArrowLeft') {
+                moveShip(ship.x - 28);
+                e.preventDefault();
+            } else if (e.key === 'ArrowRight') {
+                moveShip(ship.x + 28);
+                e.preventDefault();
+            } else if (e.key === ' ' || e.key === 'Space') {
+                if (!gameActive) restartGame();
+                e.preventDefault();
+            }
+        }
+        
+        // Рестарт
+        function restartGame() {
+            gameActive = true;
+            score = 0;
+            lives = 3;
+            stars = [];
+            asteroids = [];
+            fallSpeed = baseSpeed;
+            frameCounter = 0;
+            ship.x = cw/2;
+            updateUI();
+            // начальные объекты для динамики
+            for(let i=0;i<3;i++) spawnStar();
+        }
+        
+        // Сброс игры по клику на canvas при game over
+        function onCanvasClick(e) {
+            if (!gameActive) {
+                restartGame();
+                e.preventDefault();
+            }
+        }
+        
+        // ---------- ЦИКЛ ----------
+        function gameLoop() {
+            if (gameActive) {
+                updateGame();
+            }
+            drawBackground();
+            drawStars();
+            drawAsteroids();
+            drawShip();
+            drawUI();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Подписка событий
+        function bindEvents() {
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('touchstart', onTouchStart);
+            canvas.addEventListener('touchmove', onTouchMove);
+            canvas.addEventListener('touchend', onTouchEnd);
+            window.addEventListener('keydown', onKeyDown);
+            canvas.addEventListener('click', onCanvasClick);
+            // отключаем контекстное меню на canvas
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+        
+        // Старт
+        bindEvents();
+        restartGame();
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
