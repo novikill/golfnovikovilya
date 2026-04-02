@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Виртуальный дракончик — тамагочи</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #1b4d3d, #0e2c22);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', system-ui, sans-serif;
+            touch-action: manipulation;
+            padding: 16px;
+        }
+        .game-container {
+            max-width: 550px;
+            width: 100%;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            border-radius: 64px;
+            padding: 20px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5);
+        }
+        .pet-area {
+            text-align: center;
+            background: #2c4a3e;
+            border-radius: 60px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .pet-emoji {
+            font-size: 8rem;
+            filter: drop-shadow(0 8px 12px rgba(0,0,0,0.4));
+            transition: transform 0.2s;
+        }
+        .pet-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ffd966;
+            margin-top: 8px;
+        }
+        .stats {
+            background: #1e2f28cc;
+            border-radius: 48px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .stat {
+            margin-bottom: 12px;
+        }
+        .stat-label {
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .bar-bg {
+            background: #3a2a2a;
+            border-radius: 30px;
+            height: 20px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.2s linear;
+        }
+        .hunger-fill { background: #f39c12; }
+        .happiness-fill { background: #f1c40f; }
+        .energy-fill { background: #2ecc71; }
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .action-btn {
+            background: #2c3e50;
+            border: none;
+            border-radius: 60px;
+            padding: 12px 0;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.05s linear;
+            font-family: inherit;
+            box-shadow: 0 4px 0 #1a2632;
+        }
+        .action-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #1a2632;
+        }
+        .reset-btn {
+            background: #e67e22;
+            width: 100%;
+            padding: 12px;
+            border-radius: 60px;
+            border: none;
+            font-weight: bold;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .message {
+            margin-top: 15px;
+            text-align: center;
+            color: #ffdd99;
+            font-size: 0.9rem;
+            background: #00000066;
+            border-radius: 40px;
+            padding: 8px;
+        }
+        @media (max-width: 500px) {
+            .pet-emoji { font-size: 6rem; }
+            .action-btn { font-size: 0.9rem; padding: 10px 0; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="pet-area">
+        <div class="pet-emoji" id="petEmoji">🐉</div>
+        <div class="pet-name" id="petName">Дракончик</div>
+    </div>
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-label"><span>🍗 Сытость</span><span id="hungerValue">100</span>%</div>
+            <div class="bar-bg"><div class="bar-fill hunger-fill" id="hungerBar" style="width:100%"></div></div>
+        </div>
+        <div class="stat">
+            <div class="stat-label"><span>😊 Счастье</span><span id="happinessValue">100</span>%</div>
+            <div class="bar-bg"><div class="bar-fill happiness-fill" id="happinessBar" style="width:100%"></div></div>
+        </div>
+        <div class="stat">
+            <div class="stat-label"><span>⚡ Энергия</span><span id="energyValue">100</span>%</div>
+            <div class="bar-bg"><div class="bar-fill energy-fill" id="energyBar" style="width:100%"></div></div>
+        </div>
+    </div>
+    <div class="actions">
+        <button class="action-btn" id="feedBtn">🍎 Кормить</button>
+        <button class="action-btn" id="playBtn">🎾 Играть</button>
+        <button class="action-btn" id="healBtn">💊 Лечить</button>
+    </div>
+    <button class="reset-btn" id="resetBtn">🔄 Завести нового дракона</button>
+    <div class="message" id="messageArea">Покормите и поиграйте с дракончиком!</div>
+</div>
+
+<script>
+    (function(){
+        // ---------- СОСТОЯНИЕ ПИТОМЦА ----------
+        let pet = {
+            name: "Дракончик",
+            hunger: 100,     // 0-100, чем меньше, тем голоднее
+            happiness: 100,
+            energy: 100,
+            lastUpdate: Date.now()
+        };
+        
+        let messageTimeout = null;
+        let updateInterval = null;
+        
+        // DOM элементы
+        const petEmoji = document.getElementById('petEmoji');
+        const petNameSpan = document.getElementById('petName');
+        const hungerValue = document.getElementById('hungerValue');
+        const happinessValue = document.getElementById('happinessValue');
+        const energyValue = document.getElementById('energyValue');
+        const hungerBar = document.getElementById('hungerBar');
+        const happinessBar = document.getElementById('happinessBar');
+        const energyBar = document.getElementById('energyBar');
+        const messageDiv = document.getElementById('messageArea');
+        
+        // Функция обновления интерфейса
+        function updateUI() {
+            hungerValue.innerText = Math.floor(pet.hunger);
+            happinessValue.innerText = Math.floor(pet.happiness);
+            energyValue.innerText = Math.floor(pet.energy);
+            hungerBar.style.width = Math.max(0, pet.hunger) + '%';
+            happinessBar.style.width = Math.max(0, pet.happiness) + '%';
+            energyBar.style.width = Math.max(0, pet.energy) + '%';
+            
+            // Смена эмоции в зависимости от состояния
+            if (pet.hunger <= 20 || pet.happiness <= 20 || pet.energy <= 20) {
+                petEmoji.innerText = '😭';
+                petNameSpan.style.color = '#ff8888';
+            } else if (pet.hunger >= 80 && pet.happiness >= 80 && pet.energy >= 80) {
+                petEmoji.innerText = '🐉✨';
+                petNameSpan.style.color = '#ffd966';
+            } else if (pet.hunger <= 50 || pet.happiness <= 50) {
+                petEmoji.innerText = '😐';
+                petNameSpan.style.color = '#ffaa66';
+            } else {
+                petEmoji.innerText = '🐉';
+                petNameSpan.style.color = '#ffd966';
+            }
+        }
+        
+        // Показать временное сообщение
+        function showMessage(text, isError = false) {
+            if (messageTimeout) clearTimeout(messageTimeout);
+            messageDiv.innerHTML = text;
+            messageDiv.style.color = isError ? '#ffaa77' : '#ccffaa';
+            messageTimeout = setTimeout(() => {
+                messageDiv.innerHTML = 'Покормите и поиграйте с дракончиком!';
+                messageDiv.style.color = '#ffdd99';
+            }, 2000);
+        }
+        
+        // Сохранение в localStorage
+        function saveGame() {
+            const saveData = {
+                hunger: pet.hunger,
+                happiness: pet.happiness,
+                energy: pet.energy,
+                lastUpdate: Date.now()
+            };
+            localStorage.setItem('virtualPet', JSON.stringify(saveData));
+        }
+        
+        // Загрузка сохранения
+        function loadGame() {
+            const saved = localStorage.getItem('virtualPet');
+            if (!saved) return;
+            try {
+                const data = JSON.parse(saved);
+                pet.hunger = data.hunger;
+                pet.happiness = data.happiness;
+                pet.energy = data.energy;
+                pet.lastUpdate = data.lastUpdate;
+                // Нормализация значений
+                pet.hunger = Math.min(100, Math.max(0, pet.hunger));
+                pet.happiness = Math.min(100, Math.max(0, pet.happiness));
+                pet.energy = Math.min(100, Math.max(0, pet.energy));
+                // Применяем изменение за время, пока игра была закрыта
+                const now = Date.now();
+                const elapsedSeconds = (now - pet.lastUpdate) / 1000;
+                if (elapsedSeconds > 0 && elapsedSeconds < 86400) { // не более суток
+                    let hungerDec = elapsedSeconds * 0.3;   // 0.3% в секунду
+                    let happinessDec = elapsedSeconds * 0.25;
+                    let energyDec = elapsedSeconds * 0.2;
+                    pet.hunger = Math.max(0, pet.hunger - hungerDec);
+                    pet.happiness = Math.max(0, pet.happiness - happinessDec);
+                    pet.energy = Math.max(0, pet.energy - energyDec);
+                }
+                pet.lastUpdate = now;
+                updateUI();
+                saveGame();
+            } catch(e) { console.warn(e); }
+        }
+        
+        // Ежесекундное уменьшение параметров
+        function updatePetState() {
+            const now = Date.now();
+            const deltaSeconds = (now - pet.lastUpdate) / 1000;
+            if (deltaSeconds < 0.5) return;
+            // Уменьшаем параметры
+            let hungerDec = 0.25 * deltaSeconds;
+            let happinessDec = 0.2 * deltaSeconds;
+            let energyDec = 0.15 * deltaSeconds;
+            
+            pet.hunger = Math.max(0, pet.hunger - hungerDec);
+            pet.happiness = Math.max(0, pet.happiness - happinessDec);
+            pet.energy = Math.max(0, pet.energy - energyDec);
+            
+            // Если энергия или счастье очень низкие — дополнительные штрафы
+            if (pet.energy <= 5) pet.happiness -= 0.3 * deltaSeconds;
+            if (pet.hunger <= 5) pet.energy -= 0.4 * deltaSeconds;
+            
+            // Ограничиваем значения
+            pet.hunger = Math.min(100, Math.max(0, pet.hunger));
+            pet.happiness = Math.min(100, Math.max(0, pet.happiness));
+            pet.energy = Math.min(100, Math.max(0, pet.energy));
+            
+            pet.lastUpdate = now;
+            updateUI();
+            saveGame();
+            
+            // Предупреждения
+            if (pet.hunger <= 15) showMessage("🍽️ Дракончик голоден! Покормите его!", true);
+            else if (pet.happiness <= 15) showMessage("😢 Дракончику грустно! Поиграйте с ним!", true);
+            else if (pet.energy <= 15) showMessage("😴 Дракончик устал! Дайте ему отдохнуть (лекарство или сон)", true);
+        }
+        
+        // ДЕЙСТВИЯ
+        function feed() {
+            if (pet.hunger >= 98) {
+                showMessage("Дракончик не голоден!", true);
+                return;
+            }
+            pet.hunger = Math.min(100, pet.hunger + 25);
+            pet.energy = Math.min(100, pet.energy + 5);
+            pet.happiness = Math.min(100, pet.happiness + 5);
+            updateUI();
+            saveGame();
+            showMessage("🍎 Дракончик с аппетитом поел! Сытость +25");
+        }
+        
+        function play() {
+            if (pet.energy < 10) {
+                showMessage("Дракончик слишком устал для игр! Сначала вылечите его.", true);
+                return;
+            }
+            pet.happiness = Math.min(100, pet.happiness + 20);
+            pet.energy = Math.max(0, pet.energy - 10);
+            pet.hunger = Math.max(0, pet.hunger - 5);
+            updateUI();
+            saveGame();
+            showMessage("🎾 Веселая игра! Счастье +20, но потрачено 10 энергии.");
+        }
+        
+        function heal() {
+            if (pet.energy >= 95 && pet.hunger >= 70 && pet.happiness >= 70) {
+                showMessage("Дракончик чувствует себя отлично! Лечение не требуется.", true);
+                return;
+            }
+            pet.energy = Math.min(100, pet.energy + 30);
+            pet.hunger = Math.min(100, pet.hunger + 10);
+            pet.happiness = Math.min(100, pet.happiness + 15);
+            updateUI();
+            saveGame();
+            showMessage("💊 Дракончик принял эликсир! Энергия +30, здоровье улучшилось.");
+        }
+        
+        function resetPet() {
+            if (confirm("Завести нового дракончика? Весь прогресс будет потерян.")) {
+                pet.hunger = 100;
+                pet.happiness = 100;
+                pet.energy = 100;
+                pet.lastUpdate = Date.now();
+                updateUI();
+                saveGame();
+                showMessage("🌟 Новый дракончик появился! Заботьтесь о нём!");
+            }
+        }
+        
+        // Периодическое обновление (раз в секунду)
+        function startInterval() {
+            if (updateInterval) clearInterval(updateInterval);
+            updateInterval = setInterval(() => {
+                updatePetState();
+            }, 1000);
+        }
+        
+        // Привязка кнопок
+        document.getElementById('feedBtn').addEventListener('click', feed);
+        document.getElementById('playBtn').addEventListener('click', play);
+        document.getElementById('healBtn').addEventListener('click', heal);
+        document.getElementById('resetBtn').addEventListener('click', resetPet);
+        
+        // Инициализация
+        loadGame();
+        updateUI();
+        startInterval();
+        
+        // Сохраняем перед закрытием страницы
+        window.addEventListener('beforeunload', () => {
+            saveGame();
+        });
+    })();
+</script>
+</body>
+</html>
