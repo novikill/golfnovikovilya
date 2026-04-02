@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Кликер RPG — Враги и улучшения оружия</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #1e272e, #0f171e);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            touch-action: manipulation;
+            padding: 16px;
+        }
+        .game-container {
+            max-width: 550px;
+            width: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            border-radius: 48px;
+            padding: 20px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4);
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            background: #2c3e2faa;
+            border-radius: 60px;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            color: gold;
+            font-weight: bold;
+            backdrop-filter: blur(4px);
+        }
+        .stat {
+            background: #00000066;
+            padding: 5px 12px;
+            border-radius: 40px;
+        }
+        .enemy-area {
+            text-align: center;
+            background: #1a1f2e;
+            border-radius: 50px;
+            padding: 20px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: 0.05s linear;
+        }
+        .enemy-area:active {
+            transform: scale(0.98);
+        }
+        .enemy-img {
+            font-size: 5rem;
+            filter: drop-shadow(0 8px 12px black);
+        }
+        .hp-bar-container {
+            background: #3a2a2a;
+            border-radius: 30px;
+            height: 20px;
+            width: 100%;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .hp-bar {
+            background: #e74c3c;
+            width: 100%;
+            height: 100%;
+            transition: width 0.1s linear;
+        }
+        .enemy-name {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: white;
+            margin-top: 8px;
+        }
+        .damage-popup {
+            position: fixed;
+            pointer-events: none;
+            font-weight: bold;
+            font-size: 1.5rem;
+            color: #ffaa44;
+            text-shadow: 0 0 3px black;
+            z-index: 100;
+            animation: floatUp 0.6s ease-out forwards;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0px); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+        .upgrades {
+            background: #0f1722cc;
+            border-radius: 40px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        .upgrade-title {
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 12px;
+            font-size: 1.2rem;
+        }
+        .upgrade-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .upgrade-card {
+            background: #2c3e50;
+            border-radius: 28px;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            color: white;
+        }
+        .upgrade-info {
+            flex: 2;
+        }
+        .upgrade-name {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        .upgrade-desc {
+            font-size: 0.7rem;
+            color: #ffd966;
+        }
+        .upgrade-cost {
+            background: gold;
+            color: black;
+            border-radius: 30px;
+            padding: 4px 10px;
+            font-weight: bold;
+            margin: 0 8px;
+            white-space: nowrap;
+        }
+        button.buy-btn {
+            background: #2ecc71;
+            border: none;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: 0.05s linear;
+            color: white;
+        }
+        button.buy-btn:active {
+            transform: scale(0.96);
+        }
+        .reset-btn {
+            background: #e67e22;
+            margin-top: 15px;
+            width: 100%;
+            padding: 10px;
+            border-radius: 60px;
+            border: none;
+            font-weight: bold;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        @media (max-width: 500px) {
+            .game-container { padding: 12px; }
+            .enemy-img { font-size: 4rem; }
+            .upgrade-card { flex-direction: column; align-items: stretch; gap: 8px; }
+            .upgrade-cost { text-align: center; }
+            button.buy-btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="stats">
+        <div class="stat">💰 <span id="goldAmount">0</span></div>
+        <div class="stat">⚔️ Урон: <span id="dmgStat">1</span></div>
+        <div class="stat">🎯 Крит: <span id="critStat">5</span>%</div>
+    </div>
+
+    <div class="enemy-area" id="enemyArea">
+        <div class="enemy-img" id="enemyEmoji">👾</div>
+        <div class="hp-bar-container">
+            <div class="hp-bar" id="enemyHpBar" style="width: 100%"></div>
+        </div>
+        <div class="enemy-name" id="enemyName">Гоблин Lv.1</div>
+    </div>
+
+    <div class="upgrades">
+        <div class="upgrade-title">🔧 Улучшения оружия</div>
+        <div class="upgrade-grid" id="upgradesList"></div>
+        <button class="reset-btn" id="resetGame">🔄 Сбросить игру</button>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- ИГРОВЫЕ ПЕРЕМЕННЫЕ ----------
+        let gold = 0;
+        let baseDamage = 1;
+        let critChance = 5;          // %
+        let critMultiplier = 2;       // множитель крита
+        
+        // Доп. бонусы от улучшений
+        let bonusGoldPerKill = 0;
+        
+        // Текущий враг
+        let enemy = {
+            name: "Гоблин",
+            level: 1,
+            maxHp: 20,
+            hp: 20,
+            emoji: "👾"
+        };
+        
+        // Улучшения (храним уровни)
+        let upgrades = {
+            damage: { level: 0, baseCost: 10, name: "Острое лезвие", desc: "+1 к урону" },
+            critRate: { level: 0, baseCost: 15, name: "Меткий глаз", desc: "+5% шанс крита" },
+            critDmg: { level: 0, baseCost: 25, name: "Смертельный удар", desc: "+0.5 множитель крита" },
+            goldBonus: { level: 0, baseCost: 20, name: "Жадность", desc: "+1 золото за убийство" }
+        };
+        
+        // Функция пересчёта текущей стоимости (растёт с уровнем)
+        function getUpgradeCost(upgradeId) {
+            let up = upgrades[upgradeId];
+            return Math.floor(up.baseCost * Math.pow(1.4, up.level));
+        }
+        
+        // Применить эффекты улучшений к характеристикам
+        function applyUpgradeEffects() {
+            // damage
+            baseDamage = 1 + upgrades.damage.level;
+            // crit rate
+            critChance = 5 + upgrades.critRate.level * 5;
+            // crit multiplier
+            critMultiplier = 2 + upgrades.critDmg.level * 0.5;
+            // бонус золота
+            bonusGoldPerKill = upgrades.goldBonus.level;
+            // обновить UI
+            document.getElementById('dmgStat').innerText = baseDamage;
+            document.getElementById('critStat').innerText = critChance;
+        }
+        
+        // Сохранение в localStorage
+        function saveGame() {
+            const saveData = {
+                gold: gold,
+                upgrades: {
+                    damage: upgrades.damage.level,
+                    critRate: upgrades.critRate.level,
+                    critDmg: upgrades.critDmg.level,
+                    goldBonus: upgrades.goldBonus.level
+                },
+                enemy: {
+                    name: enemy.name,
+                    level: enemy.level,
+                    maxHp: enemy.maxHp,
+                    hp: enemy.hp,
+                    emoji: enemy.emoji
+                }
+            };
+            localStorage.setItem('clickerRPG_save', JSON.stringify(saveData));
+        }
+        
+        // Загрузка сохранения
+        function loadGame() {
+            const saved = localStorage.getItem('clickerRPG_save');
+            if (!saved) return;
+            try {
+                const data = JSON.parse(saved);
+                gold = data.gold || 0;
+                if (data.upgrades) {
+                    upgrades.damage.level = data.upgrades.damage || 0;
+                    upgrades.critRate.level = data.upgrades.critRate || 0;
+                    upgrades.critDmg.level = data.upgrades.critDmg || 0;
+                    upgrades.goldBonus.level = data.upgrades.goldBonus || 0;
+                }
+                if (data.enemy) {
+                    enemy.name = data.enemy.name;
+                    enemy.level = data.enemy.level;
+                    enemy.maxHp = data.enemy.maxHp;
+                    enemy.hp = data.enemy.hp;
+                    enemy.emoji = data.enemy.emoji;
+                    // страховка: если hp > maxHp
+                    if (enemy.hp > enemy.maxHp) enemy.hp = enemy.maxHp;
+                    if (enemy.hp <= 0) enemy.hp = enemy.maxHp;
+                }
+                applyUpgradeEffects();
+                updateUI();
+                renderUpgrades();
+            } catch(e) { console.warn(e); }
+        }
+        
+        // Обновление всех элементов интерфейса
+        function updateUI() {
+            document.getElementById('goldAmount').innerText = Math.floor(gold);
+            document.getElementById('dmgStat').innerText = baseDamage;
+            document.getElementById('critStat').innerText = critChance;
+            const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+            document.getElementById('enemyHpBar').style.width = Math.max(0, hpPercent) + '%';
+            document.getElementById('enemyName').innerHTML = ` Lv.`;
+            document.getElementById('enemyEmoji').innerText = enemy.emoji;
+            // цвет полоски
+            const hpBar = document.getElementById('enemyHpBar');
+            if (hpPercent < 30) hpBar.style.background = '#e67e22';
+            else hpBar.style.background = '#e74c3c';
+        }
+        
+        // Показать всплывающий урон
+        function showDamagePopup(damage, isCrit) {
+            const div = document.createElement('div');
+            div.className = 'damage-popup';
+            div.innerText = `- ''`;
+            div.style.color = isCrit ? '#ffaa44' : '#ffffff';
+            div.style.left = (window.innerWidth/2 - 40) + 'px';
+            div.style.top = (window.innerHeight/2 - 50) + 'px';
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 600);
+        }
+        
+        function showMessage(text, color='#ffaa44') {
+            const div = document.createElement('div');
+            div.className = 'damage-popup';
+            div.innerText = text;
+            div.style.color = color;
+            div.style.fontSize = '1rem';
+            div.style.left = (window.innerWidth/2 - 80) + 'px';
+            div.style.top = (window.innerHeight/2 + 50) + 'px';
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1300);
+        }
+        
+        // Атака по врагу
+        function attack() {
+            let damage = baseDamage;
+            const isCrit = Math.random() * 100 < critChance;
+            if (isCrit) damage = Math.floor(damage * critMultiplier);
+            enemy.hp -= damage;
+            if (enemy.hp < 0) enemy.hp = 0;
+            showDamagePopup(damage, isCrit);
+            updateUI();
+            
+            if (enemy.hp <= 0) {
+                // Убийство врага
+                let earnedGold = 5 + enemy.level * 2 + bonusGoldPerKill;
+                gold += earnedGold;
+                // Новый враг, уровень +1
+                enemy.level++;
+                // Новое максимальное HP
+                const newMaxHp = Math.floor(15 + enemy.level * 6);
+                enemy.maxHp = newMaxHp;
+                enemy.hp = newMaxHp;
+                // Смена имени и эмодзи
+                const enemiesList = [
+                    { name: "Гоблин", emoji: "👺" }, { name: "Орк", emoji: "👹" }, { name: "Тролль", emoji: "🧌" },
+                    { name: "Скелет", emoji: "💀" }, { name: "Призрак", emoji: "👻" }, { name: "Демон", emoji: "😈" },
+                    { name: "Дракон", emoji: "🐉" }, { name: "Титан", emoji: "🗿" }
+                ];
+                let idx = (enemy.level - 1) % enemiesList.length;
+                enemy.name = enemiesList[idx].name;
+                enemy.emoji = enemiesList[idx].emoji;
+                updateUI();
+                showMessage(`+💰 Убит! Новый враг: `, '#ffd966');
+                saveGame();
+            }
+            saveGame();
+            updateUI();
+        }
+        
+        // Покупка улучшения
+        function buyUpgrade(upgradeId) {
+            const cost = getUpgradeCost(upgradeId);
+            if (gold >= cost) {
+                gold -= cost;
+                upgrades[upgradeId].level++;
+                // Применяем эффекты
+                applyUpgradeEffects();
+                saveGame();
+                updateUI();
+                renderUpgrades();  // перерисовать список с новыми ценами
+                showMessage(`Куплено:  (ур.)`, '#2ecc71');
+            } else {
+                showMessage(`Не хватает золота! Нужно 💰`, '#e74c3c');
+            }
+        }
+        
+        // Отрисовка списка улучшений с актуальными ценами
+        function renderUpgrades() {
+            const container = document.getElementById('upgradesList');
+            if (!container) return;
+            const upgradesList = [
+                { id: 'damage', data: upgrades.damage },
+                { id: 'critRate', data: upgrades.critRate },
+                { id: 'critDmg', data: upgrades.critDmg },
+                { id: 'goldBonus', data: upgrades.goldBonus }
+            ];
+            container.innerHTML = '';
+            for (let up of upgradesList) {
+                const id = up.id;
+                const data = up.data;
+                const cost = getUpgradeCost(id);
+                const card = document.createElement('div');
+                card.className = 'upgrade-card';
+                card.innerHTML = `
+                    <div class="upgrade-info">
+                        <div class="upgrade-name"> Lv.</div>
+                        <div class="upgrade-desc"></div>
+                    </div>
+                    <div class="upgrade-cost">💰 </div>
+                    <button class="buy-btn" data-id="">Купить</button>
+                `;
+                container.appendChild(card);
+            }
+            // Привязать обработчики
+            document.querySelectorAll('.buy-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.getAttribute('data-id');
+                    buyUpgrade(id);
+                });
+            });
+        }
+        
+        // Сброс игры
+        function resetGame() {
+            if (confirm('Сбросить весь прогресс?')) {
+                localStorage.removeItem('clickerRPG_save');
+                gold = 0;
+                upgrades.damage.level = 0;
+                upgrades.critRate.level = 0;
+                upgrades.critDmg.level = 0;
+                upgrades.goldBonus.level = 0;
+                applyUpgradeEffects();
+                enemy = {
+                    name: "Гоблин",
+                    level: 1,
+                    maxHp: 20,
+                    hp: 20,
+                    emoji: "👾"
+                };
+                updateUI();
+                renderUpgrades();
+                saveGame();
+                showMessage('Игра сброшена!', '#f39c12');
+            }
+        }
+        
+        // Привязка событий
+        function bindEvents() {
+            const enemyDiv = document.getElementById('enemyArea');
+            if (enemyDiv) {
+                enemyDiv.addEventListener('click', (e) => {
+                    attack();
+                });
+                enemyDiv.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    attack();
+                });
+            }
+            const resetBtn = document.getElementById('resetGame');
+            if (resetBtn) resetBtn.addEventListener('click', resetGame);
+        }
+        
+        // Инициализация
+        loadGame();
+        bindEvents();
+        renderUpgrades();
+        updateUI();
+    })();
+</script>
+</body>
