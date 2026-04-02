@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Кликер — минимализм</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #1a2a6c, #b21f1f, #fdbb4d);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', system-ui, -apple-system, sans-serif;
+            touch-action: manipulation;
+        }
+        .game-container {
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+            border-radius: 64px;
+            padding: 20px;
+            box-shadow: 0 25px 45px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+        .score-board {
+            font-size: 4rem;
+            font-weight: 800;
+            color: white;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.5);
+            border-radius: 60px;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+        }
+        .click-area {
+            background: #ffd966;
+            width: 250px;
+            height: 250px;
+            margin: 20px auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.07s ease;
+            box-shadow: 0 20px 25px -10px rgba(0,0,0,0.5);
+            border: 4px solid white;
+        }
+        .click-area:active {
+            transform: scale(0.96);
+            background: #ffb347;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+        }
+        .click-area span {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #2c3e66;
+            text-shadow: 1px 1px 0 white;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 30px 0 20px;
+        }
+        button {
+            background: #2ecc71;
+            border: none;
+            font-size: 1.4rem;
+            font-weight: bold;
+            padding: 12px 28px;
+            border-radius: 60px;
+            color: white;
+            cursor: pointer;
+            transition: 0.1s linear;
+            box-shadow: 0 5px 0 #1f8b4c;
+            font-family: inherit;
+        }
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #1f8b4c;
+        }
+        .exit-btn {
+            background: #e74c3c;
+            box-shadow: 0 5px 0 #a82313;
+        }
+        .difficulty {
+            margin: 15px 0;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .difficulty button {
+            background: #3498db;
+            box-shadow: 0 5px 0 #1f618d;
+            font-size: 1rem;
+            padding: 8px 20px;
+        }
+        .bonus {
+            font-size: 1rem;
+            background: #f1c40f;
+            color: #2c3e50;
+            border-radius: 40px;
+            padding: 6px 12px;
+            display: inline-block;
+            margin-top: 12px;
+            font-weight: bold;
+        }
+        .share {
+            background: #9b59b6;
+            box-shadow: 0 5px 0 #6c3483;
+            margin-top: 12px;
+        }
+        @media (max-width: 600px) {
+            .click-area {
+                width: 200px;
+                height: 200px;
+            }
+            .score-board {
+                font-size: 2.8rem;
+            }
+            button {
+                font-size: 1rem;
+                padding: 8px 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="score-board" id="scoreDisplay">0</div>
+    <div class="click-area" id="clicker">
+        <span>👆</span>
+    </div>
+    <div class="controls">
+        <button id="playBtn">▶ Играть</button>
+        <button id="exitBtn" class="exit-btn">⛌ Выход</button>
+    </div>
+    <div class="difficulty">
+        <button data-diff="easy">🟢 Лёгкий</button>
+        <button data-diff="medium">🟠 Средний</button>
+        <button data-diff="hard">🔴 Сложный</button>
+    </div>
+    <div class="bonus" id="bonusMessage">🔥 Бонус: +0</div>
+    <button id="shareBtn" class="share">📤 Поделиться результатом</button>
+</div>
+
+<script>
+    // ----- ИГРОВАЯ ЛОГИКА -----
+    let score = 0;
+    let gameActive = false;      // игра идёт только после нажатия "Играть"
+    let currentDifficulty = 'medium'; // easy, medium, hard
+    let timeLeft = 0;
+    let timerInterval = null;
+    let clickStreak = 0;          // серия кликов без паузы
+    let streakTimeout = null;
+
+    // DOM элементы
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const clickArea = document.getElementById('clicker');
+    const playBtn = document.getElementById('playBtn');
+    const exitBtn = document.getElementById('exitBtn');
+    const bonusSpan = document.getElementById('bonusMessage');
+    const shareBtn = document.getElementById('shareBtn');
+
+    // Настройки сложности (время в секундах, очки за клик)
+    const difficultySettings = {
+        easy: { time: 45, pointsPerClick: 2, streakBonusThreshold: 10 },
+        medium: { time: 30, pointsPerClick: 1, streakBonusThreshold: 15 },
+        hard: { time: 20, pointsPerClick: 1, streakBonusThreshold: 20 }
+    };
+
+    // Звуки (используем Web Audio, чтобы работало везде)
+    function playClickSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.value = 880;
+            gainNode.gain.value = 0.15;
+            oscillator.type = 'sine';
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.3);
+            oscillator.stop(audioCtx.currentTime + 0.2);
+            // не закрываем контекст, чтобы звуки были
+        } catch(e) { /* без звука */ }
+    }
+
+    function playLevelUpSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 440;
+            gain.gain.value = 0.2;
+            osc.type = 'triangle';
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.4);
+            osc.stop(audioCtx.currentTime + 0.3);
+        } catch(e) {}
+    }
+
+    // Обновление счёта на экране
+    function updateUI() {
+        scoreDisplay.innerText = Math.floor(score);
+    }
+
+    // Проверка достижений (бонусы за серию)
+    function checkStreakBonus() {
+        const settings = difficultySettings[currentDifficulty];
+        if (clickStreak >= settings.streakBonusThreshold && clickStreak % settings.streakBonusThreshold === 0) {
+            // бонус: дополнительные очки = порог * 0.5
+            const bonus = Math.floor(settings.streakBonusThreshold * 0.8);
+            score += bonus;
+            bonusSpan.innerText = `✨ Бонус за серию ${clickStreak} кликов! +${bonus} ✨`;
+            setTimeout(() => {
+                if (bonusSpan.innerText.includes('Бонус')) bonusSpan.innerText = '🔥 Бонус: +0';
+            }, 1500);
+            playLevelUpSound();
+            updateUI();
+        } else {
+            if (!bonusSpan.innerText.includes('Бонус за серию')) {
+                bonusSpan.innerText = `🎯 Серия: ${clickStreak} кликов`;
+            }
+        }
+    }
+
+    // Сброс таймера серии
+    function resetStreakTimer() {
+        if (streakTimeout) clearTimeout(streakTimeout);
+        streakTimeout = setTimeout(() => {
+            if (clickStreak > 0) {
+                clickStreak = 0;
+                bonusSpan.innerText = '⚡ Серия прервана! Начни новую ⚡';
+                setTimeout(() => {
+                    if (bonusSpan.innerText.includes('прервана')) bonusSpan.innerText = '🔥 Бонус: +0';
+                }, 1000);
+            }
+        }, 1800);
+    }
+
+    // Обработка клика
+    function handleClick() {
+        if (!gameActive) {
+            // если игра не активна, можно короткий звук предупреждения или ничего
+            return;
+        }
+        const settings = difficultySettings[currentDifficulty];
+        score += settings.pointsPerClick;
+        clickStreak++;
+        resetStreakTimer();
+        updateUI();
+        playClickSound();
+        checkStreakBonus();
+
+        // Анимация нажатия (добавляем ripple эффект)
+        const clickerDiv = document.getElementById('clicker');
+        clickerDiv.style.transform = 'scale(0.96)';
+        setTimeout(() => { clickerDiv.style.transform = ''; }, 100);
+    }
+
+    // Таймер обратного отсчёта
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (!gameActive) return;
+            if (timeLeft <= 0) {
+                // игра окончена
+                clearInterval(timerInterval);
+                timerInterval = null;
+                gameActive = false;
+                alert(`Время вышло! Ваш результат: ${Math.floor(score)} очков. Нажмите "Играть" для новой игры.`);
+                playBtn.innerText = '▶ Играть';
+            } else {
+                timeLeft--;
+                // отображаем время в счёте? можно добавить отдельный индикатор, но для минимализма покажем в заголовке страницы
+                document.title = `Кликер | ${timeLeft} сек | ${Math.floor(score)} очков`;
+                if (timeLeft === 0) {
+                    document.title = 'Кликер';
+                }
+            }
+        }, 1000);
+    }
+
+    // Запуск / сброс игры
+    function startNewGame() {
+        if (timerInterval) clearInterval(timerInterval);
+        gameActive = true;
+        score = 0;
+        clickStreak = 0;
+        if (streakTimeout) clearTimeout(streakTimeout);
+        bonusSpan.innerText = '🔥 Бонус: +0';
+        const settings = difficultySettings[currentDifficulty];
+        timeLeft = settings.time;
+        updateUI();
+        startTimer();
+        playBtn.innerText = '🔁 Играть (новая)';
+        document.title = `Кликер | ${timeLeft} сек | 0 очков`;
+        // маленький звук старта
+        playLevelUpSound();
+    }
+
+    function exitGame() {
+        if (timerInterval) clearInterval(timerInterval);
+        gameActive = false;
+        score = 0;
+        clickStreak = 0;
+        updateUI();
+        playBtn.innerText = '▶ Играть';
+        document.title = 'Кликер';
+        bonusSpan.innerText = '🔥 Бонус: +0';
+        if (streakTimeout) clearTimeout(streakTimeout);
+        alert('Выход из игры. Счёт сброшен.');
+    }
+
+    // Смена сложности (только когда игра не активна)
+    function setDifficulty(level) {
+        if (gameActive) {
+            alert('Нельзя сменить сложность во время игры. Нажмите "Выход" или закончите раунд.');
+            return;
+        }
+        currentDifficulty = level;
+        const settings = difficultySettings[level];
+        bonusSpan.innerText = `🎚 Сложность: ${level === 'easy' ? 'Лёгкая (+2 очка за клик)' : (level === 'medium' ? 'Средняя' : 'Сложная')}`;
+        setTimeout(() => {
+            if (bonusSpan.innerText.includes('Сложность')) bonusSpan.innerText = '🔥 Бонус: +0';
+        }, 2000);
+    }
+
+    // Поделиться результатом (Web Share API)
+    function shareResult() {
+        if (!gameActive && score === 0) {
+            alert('Сыграйте сначала, чтобы поделиться результатом.');
+            return;
+        }
+        const text = `Я набрал ${Math.floor(score)} очков в игре-кликере на сложности ${currentDifficulty}! Попробуй меня побить!`;
+        if (navigator.share) {
+            navigator.share({
+                title: 'Мой рекорд в кликере',
+                text: text,
+                url: window.location.href
+            }).catch(() => alert('Не удалось поделиться'));
+        } else {
+            // fallback: копирование в буфер
+            navigator.clipboard.writeText(text);
+            alert('Результат скопирован в буфер обмена: ' + text);
+        }
+    }
+
+    // ----- Привязка событий (с поддержкой touch) -----
+    clickArea.addEventListener('click', handleClick);
+    clickArea.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleClick();
+    });
+    playBtn.addEventListener('click', startNewGame);
+    exitBtn.addEventListener('click', exitGame);
+    shareBtn.addEventListener('click', shareResult);
+
+    document.querySelectorAll('[data-diff]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const level = e.target.getAttribute('data-diff');
+            setDifficulty(level);
+        });
+    });
+
+    // Инициализация (игра не активна, но интерфейс готов)
+    setDifficulty('medium');
+    updateUI();
+    console.log('Игра загружена. Нажмите "Играть"');
+</script>
+</body>
+</html>
