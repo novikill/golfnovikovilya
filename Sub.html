@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Subway Runner — бесконечный раннер в стиле Subway Surfers</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #0a2f3a, #06212a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', system-ui, sans-serif;
+            touch-action: pan-x pan-y; /* разрешаем жесты, но отключаем прокрутку страницы */
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        /* контейнер с 3D-перспективой (псевдо-3D для атмосферы) */
+        .game-container {
+            perspective: 800px;
+            perspective-origin: 50% 40%;
+            width: 100%;
+            max-width: 500px;
+            margin: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 28px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5);
+            transform: rotateX(2deg) translateZ(10px);
+            background: #1f2c3c;
+            cursor: pointer;
+            width: 100%;
+            height: auto;
+        }
+        /* UI поверх canvas (счёт, бонусы) */
+        .ui-overlay {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            left: 16px;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .score-panel {
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(8px);
+            border-radius: 40px;
+            padding: 8px 20px;
+            color: gold;
+            font-weight: bold;
+            font-size: 1.6rem;
+            font-family: monospace;
+            letter-spacing: 1px;
+            border: 1px solid #ffcc44;
+            pointer-events: none;
+        }
+        .best-score {
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(8px);
+            border-radius: 40px;
+            padding: 8px 20px;
+            color: #ffaa66;
+            font-weight: bold;
+            font-size: 1.2rem;
+            font-family: monospace;
+        }
+        .bonus-icons {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .bonus-icon {
+            background: #000000aa;
+            backdrop-filter: blur(4px);
+            border-radius: 60px;
+            padding: 6px 15px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border-left: 4px solid gold;
+        }
+        .game-over-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            visibility: hidden;
+            flex-direction: column;
+            font-family: inherit;
+        }
+        .game-over-card {
+            background: #16212b;
+            border-radius: 64px;
+            padding: 30px 25px;
+            text-align: center;
+            width: 280px;
+            border: 1px solid #ffcc66;
+            box-shadow: 0 20px 40px black;
+        }
+        .game-over-card h2 {
+            color: #ff884d;
+            font-size: 2.2rem;
+            margin: 0 0 10px;
+        }
+        .final-score-text {
+            color: white;
+            font-size: 1.3rem;
+        }
+        .final-score-number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: gold;
+        }
+        button {
+            background: #2ecc71;
+            border: none;
+            font-size: 1.3rem;
+            font-weight: bold;
+            padding: 12px 18px;
+            border-radius: 60px;
+            color: white;
+            margin-top: 18px;
+            width: 100%;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #1f8b4c;
+            transition: 0.05s linear;
+            font-family: inherit;
+        }
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #1f8b4c;
+        }
+        .menu-btn {
+            background: #3498db;
+            box-shadow: 0 5px 0 #1f618d;
+            margin-top: 10px;
+        }
+        @media (max-width: 550px) {
+            .score-panel { font-size: 1.2rem; padding: 4px 14px; }
+            .best-score { font-size: 0.9rem; padding: 4px 14px; }
+            .bonus-icon { font-size: 0.7rem; padding: 4px 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <canvas id="gameCanvas" width="450" height="700"></canvas>
+</div>
+<div class="ui-overlay">
+    <div class="score-panel">🏆 <span id="scoreValue">0</span></div>
+    <div class="best-score">🏅 Рекорд: <span id="bestValue">0</span></div>
+</div>
+<div class="bonus-icons" id="bonusIcons">
+    <div class="bonus-icon" id="magnetIcon">🧲 нет</div>
+    <div class="bonus-icon" id="boostIcon">⚡ нет</div>
+    <div class="bonus-icon" id="shieldIcon">🛡️ нет</div>
+</div>
+<div id="gameOverlay" class="game-over-panel">
+    <div class="game-over-card">
+        <h2>GAME OVER</h2>
+        <div class="final-score-text">Твой счёт</div>
+        <div class="final-score-number" id="finalScoreSpan">0</div>
+        <button id="restartBtn">🏃 ИГРАТЬ СНОВА</button>
+        <button id="mainMenuBtn" class="menu-btn">🏠 ГЛАВНОЕ МЕНЮ</button>
+    </div>
+</div>
+
+<script>
+    // --------------------- SUBWAY RUNNER (БЕСКОНЕЧНЫЙ РАННЕР) ---------------------
+    // Механики: три дорожки (0,1,2), персонаж бежит вперёд, объекты движутся сверху вниз.
+    // Управление: стрелки/свайпы ←→ смена дорожки, ↑/свайп вверх - прыжок, ↓/свайп вниз - кувырок.
+    // Бонусы: магнит, ускорение, щит. Скорость растёт со временем. Рекорд localStorage.
+    // ----------------------------------------------------------------------------
+    
+    // ---------- НАСТРОЙКИ ----------
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    // Размеры
+    let cw = canvas.width = 450;
+    let ch = canvas.height = 700;
+    // Дорожки (3 полосы)
+    const laneCount = 3;
+    const laneWidth = cw / laneCount;  // 150px
+    let currentLane = 1;   // 0 - левая, 1 - центр, 2 - правая
+    // Состояние игры
+    let gameActive = true;
+    let score = 0;          // очки = пройденное расстояние (метры) + монеты
+    let distance = 0;       // условные метры (увеличиваются каждый кадр)
+    let coinsCollected = 0;
+    let bestScore = localStorage.getItem('subwayBest') ? parseInt(localStorage.getItem('subwayBest')) : 0;
+    document.getElementById('bestValue').innerText = bestScore;
+    
+    // Динамическая скорость (базовая скорость объектов пикселей/кадр)
+    let baseSpeed = 4.2;
+    let currentSpeed = baseSpeed;
+    let speedMultiplier = 1.0;
+    let gameSpeedIncrease = 0.002;   // увеличение скорости каждый кадр
+    
+    // Список активных объектов (препятствия, монеты, бонусы)
+    let objects = [];
+    // Генерация: таймер (кадры)
+    let frameCounter = 0;
+    let spawnGap = 45;    // через сколько кадров спавнить объект (уменьшается с ростом скорости)
+    
+    // Бонусы активные
+    let magnetActive = false;
+    let magnetTimer = 0;
+    let shieldActive = false;
+    let shieldTimer = 0;
+    let boostActive = false;
+    let boostTimer = 0;
+    
+    // Прыжок / кувырок (неуязвимость + анимация)
+    let isJumping = false;
+    let isRolling = false;
+    let actionTimer = 0;     // длительность 0.25 сек
+    let invincible = false;  // защита от столкновений
+    
+    // Эффекты
+    let coinPickupSound = false; // заглушка (звук через WebAudio)
+    
+    // UI элементы
+    const scoreSpan = document.getElementById('scoreValue');
+    const finalScoreSpan = document.getElementById('finalScoreSpan');
+    const gameOverlay = document.getElementById('gameOverlay');
+    const magnetIcon = document.getElementById('magnetIcon');
+    const boostIcon = document.getElementById('boostIcon');
+    const shieldIcon = document.getElementById('shieldIcon');
+    
+    // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+    function updateUI() {
+        let totalScore = Math.floor(distance) + coinsCollected;
+        scoreSpan.innerText = totalScore;
+        // бонусные иконки
+        magnetIcon.innerText = magnetActive ? `🧲 с` : '🧲 нет';
+        boostIcon.innerText = boostActive ? `⚡ с` : '⚡ нет';
+        shieldIcon.innerText = shieldActive ? `🛡️ с` : '🛡️ нет';
+    }
+    
+    // Сохранить рекорд
+    function saveBestIfNeeded() {
+        let total = Math.floor(distance) + coinsCollected;
+        if (total > bestScore) {
+            bestScore = total;
+            localStorage.setItem('subwayBest', bestScore);
+            document.getElementById('bestValue').innerText = bestScore;
+        }
+    }
+    
+    // Генерация объекта (случайно: препятствие, монета или бонус)
+    function spawnObject() {
+        if (!gameActive) return;
+        const lane = Math.floor(Math.random() * laneCount);
+        const rand = Math.random();
+        let type = '';
+        let subtype = '';
+        // вероятность: 40% монета, 30% препятствие, 15% магнит, 10% ускорение, 5% щит
+        if (rand < 0.4) {
+            type = 'coin';
+        } else if (rand < 0.7) {
+            type = 'obstacle';
+            // препятствия: барьер (обычное) или поезд (занимает 2 дорожки? упростим: стандартное)
+            subtype = Math.random() < 0.7 ? 'barrier' : 'train';
+        } else if (rand < 0.85) {
+            type = 'bonus';
+            subtype = 'magnet';
+        } else if (rand < 0.95) {
+            type = 'bonus';
+            subtype = 'boost';
+        } else {
+            type = 'bonus';
+            subtype = 'shield';
+        }
+        // координата Y (появляется сверху за пределами canvas)
+        let y = -40;
+        let x = lane * laneWidth + laneWidth/2;
+        let width = 32;
+        let height = 32;
+        if (type === 'obstacle' && subtype === 'train') {
+            width = 70;
+            height = 40;
+            x = lane * laneWidth + laneWidth/2 - 10;
+        }
+        objects.push({
+            type: type,
+            subtype: subtype,
+            lane: lane,
+            x: x,
+            y: y,
+            w: width,
+            h: height,
+            collected: false
+        });
+    }
+    
+    // Обновление бонусов и таймеров
+    function updateBonuses() {
+        if (magnetActive) {
+            magnetTimer--;
+            if (magnetTimer <= 0) magnetActive = false;
+        }
+        if (shieldActive) {
+            shieldTimer--;
+            if (shieldTimer <= 0) shieldActive = false;
+        }
+        if (boostActive) {
+            boostTimer--;
+            if (boostTimer <= 0) {
+                boostActive = false;
+                currentSpeed = baseSpeed * speedMultiplier;
+            } else {
+                currentSpeed = (baseSpeed * 1.8) * speedMultiplier;
+            }
+        } else {
+            currentSpeed = baseSpeed * speedMultiplier;
+        }
+        updateUI();
+    }
+    
+    // Магнит: собирает монеты в радиусе
+    function applyMagnet() {
+        if (!magnetActive) return;
+        for (let i=0; i<objects.length; i++) {
+            const obj = objects[i];
+            if (obj.type === 'coin' && !obj.collected) {
+                const playerX = currentLane * laneWidth + laneWidth/2;
+                const objX = obj.x;
+                if (Math.abs(playerX - objX) < 90 && obj.y > 0 && obj.y < ch) {
+                    obj.collected = true;
+                    coinsCollected++;
+                    updateUI();
+                    playPickupSound();
+                }
+            }
+        }
+    }
+    
+    // Проверка столкновений и сбор монет/бонусов
+    function checkCollisions() {
+        const playerX = currentLane * laneWidth + laneWidth/2;
+        const playerY = ch - 85;   // позиция персонажа (ноги)
+        const playerW = 38;
+        const playerH = 48;
+        for (let i=0; i<objects.length; i++) {
+            const obj = objects[i];
+            if (obj.collected) continue;
+            // столкновение с игроком (ограничивающие прямоугольники)
+            const collide = (obj.x + obj.w/2 > playerX - playerW/2 && obj.x - obj.w/2 < playerX + playerW/2 &&
+                              obj.y + obj.h/2 > playerY - playerH/2 && obj.y - obj.h/2 < playerY + playerH/2);
+            if (collide) {
+                if (obj.type === 'coin') {
+                    obj.collected = true;
+                    coinsCollected++;
+                    updateUI();
+                    playPickupSound();
+                    continue;
+                }
+                else if (obj.type === 'bonus') {
+                    obj.collected = true;
+                    if (obj.subtype === 'magnet') {
+                        magnetActive = true;
+                        magnetTimer = 450; // 7.5 сек при 60fps
+                    } else if (obj.subtype === 'boost') {
+                        boostActive = true;
+                        boostTimer = 480;
+                        if (!boostActive) currentSpeed = baseSpeed * 1.8 * speedMultiplier;
+                    } else if (obj.subtype === 'shield') {
+                        shieldActive = true;
+                        shieldTimer = 600;
+                    }
+                    playPickupSound();
+                    updateUI();
+                    continue;
+                }
+                else if (obj.type === 'obstacle') {
+                    // если есть щит или игрок в прыжке/кувырке — защита
+                    if (shieldActive || isJumping || isRolling) {
+                        // щит уничтожается при защите
+                        if (shieldActive && !isJumping && !isRolling) {
+                            shieldActive = false;
+                            shieldTimer = 0;
+                        }
+                        // уничтожаем препятствие
+                        obj.collected = true;
+                        continue;
+                    } else {
+                        // игра окончена
+                        gameActive = false;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Обновление позиций объектов
+    function updateObjects() {
+        for (let i=0; i<objects.length; i++) {
+            objects[i].y += currentSpeed;
+        }
+        // удалить вышедшие за пределы или собранные
+        objects = objects.filter(obj => obj.y < ch + 100 && !obj.collected);
+    }
+    
+    // Генерация новых объектов с динамическим интервалом
+    function dynamicSpawning() {
+        if (!gameActive) return;
+        // интервал спавна уменьшается с ростом скорости
+        let dynamicGap = Math.max(22, 50 - Math.floor(currentSpeed / 1.5));
+        if (frameCounter >= dynamicGap) {
+            frameCounter = 0;
+            spawnObject();
+            // иногда двойной спавн для насыщенности
+            if (Math.random() < 0.25 && currentSpeed > 6) spawnObject();
+        } else {
+            frameCounter++;
+        }
+    }
+    
+    // увеличение сложности
+    function increaseDifficulty() {
+        if (!gameActive) return;
+        speedMultiplier += gameSpeedIncrease;
+        if (!boostActive) currentSpeed = baseSpeed * speedMultiplier;
+        distance += 0.3;    // очки за расстояние
+        updateUI();
+    }
+    
+    // управление прыжком/кувырком
+    function startJump() {
+        if (!gameActive) return;
+        if (!isJumping && !isRolling) {
+            isJumping = true;
+            actionTimer = 20;   // ~0.33 сек при 60fps
+            invincible = true;
+            setTimeout(() => { if (isJumping) { isJumping = false; invincible = false; } }, 330);
+        }
+    }
+    function startRoll() {
+        if (!gameActive) return;
+        if (!isJumping && !isRolling) {
+            isRolling = true;
+            actionTimer = 20;
+            invincible = true;
+            setTimeout(() => { if (isRolling) { isRolling = false; invincible = false; } }, 330);
+        }
+    }
+    
+    // Обработка смены дорожки
+    function changeLane(delta) {
+        if (!gameActive) return;
+        let newLane = currentLane + delta;
+        if (newLane >= 0 && newLane < laneCount) currentLane = newLane;
+    }
+    
+    // звуковые эффекты (короткие beep через WebAudio)
+    function playPickupSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 880;
+            gain.gain.value = 0.1;
+            osc.type = 'sine';
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.2);
+            osc.stop(audioCtx.currentTime + 0.15);
+        } catch(e) {}
+    }
+    function playCrashSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 220;
+            gain.gain.value = 0.2;
+            osc.type = 'sawtooth';
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+            osc.stop(audioCtx.currentTime + 0.25);
+        } catch(e) {}
+    }
+    
+    // ---------- ОТРИСОВКА ----------
+    function drawBackground() {
+        // градиент неба
+        const grad = ctx.createLinearGradient(0, 0, 0, ch);
+        grad.addColorStop(0, '#1b3b4f');
+        grad.addColorStop(1, '#0f212e');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, cw, ch);
+        // рисование рельсов и перспектива
+        for (let i=0; i<laneCount; i++) {
+            let x = i * laneWidth + laneWidth/2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, ch);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#c0b9a0';
+            ctx.shadowBlur = 0;
+            ctx.stroke();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#ffcc55';
+            ctx.setLineDash([8,12]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        // шпалы
+        for (let y = 50; y < ch; y+=45) {
+            for (let l=0; l<laneCount; l++) {
+                ctx.fillStyle = '#8b6946';
+                ctx.fillRect(l*laneWidth+15, y, laneWidth-30, 6);
+            }
+        }
+        // здания в перспективе
+        ctx.fillStyle = '#2d3e4b';
+        for (let i=0;i<12;i++) {
+            ctx.fillRect(20+i*45, ch-150 - (i%3)*20, 30, 120);
+        }
+    }
+    
+    function drawObjects() {
+        for (let obj of objects) {
+            if (obj.type === 'coin') {
+                ctx.fillStyle = '#FFD966';
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(obj.x, obj.y, 14, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#FFB347';
+                ctx.beginPath();
+                ctx.arc(obj.x, obj.y, 7, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px monospace';
+                ctx.fillText('★', obj.x-5, obj.y+5);
+            } 
+            else if (obj.type === 'obstacle') {
+                ctx.fillStyle = '#9e5a2b';
+                ctx.shadowBlur = 2;
+                if (obj.subtype === 'train') {
+                    ctx.fillStyle = '#5a4c3c';
+                    ctx.fillRect(obj.x-obj.w/2, obj.y-obj.h/2, obj.w, obj.h);
+                    ctx.fillStyle = '#aa7c58';
+                    for (let i=0;i<3;i++) ctx.fillRect(obj.x-25+i*20, obj.y-10, 10, 20);
+                } else {
+                    ctx.fillStyle = '#b87c4f';
+                    ctx.fillRect(obj.x-25, obj.y-20, 50, 40);
+                    ctx.fillStyle = '#a06030';
+                    ctx.fillRect(obj.x-20, obj.y-30, 40, 12);
+                }
+            } 
+            else if (obj.type === 'bonus') {
+                let color = '#FF69B4';
+                if (obj.subtype === 'magnet') color = '#aa66ff';
+                if (obj.subtype === 'boost') color = '#55ffaa';
+                if (obj.subtype === 'shield') color = '#33ccff';
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.rect(obj.x-12, obj.y-12, 24, 24);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 18px sans-serif';
+                if (obj.subtype === 'magnet') ctx.fillText('🧲', obj.x-9, obj.y+8);
+                else if (obj.subtype === 'boost') ctx.fillText('⚡', obj.x-7, obj.y+8);
+                else ctx.fillText('🛡️', obj.x-8, obj.y+8);
+            }
+        }
+        ctx.shadowBlur = 0;
+    }
+    
+    function drawPlayer() {
+        let playerX = currentLane * laneWidth + laneWidth/2;
+        let playerY = ch - 80;
+        if (isJumping) playerY -= 28;
+        if (isRolling) playerY += 12;
+        ctx.fillStyle = '#2ecc71';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(playerX-20, playerY-25, 40, 48);
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillRect(playerX-12, playerY-35, 24, 15);
+        ctx.fillStyle = 'white';
+        ctx.fillRect(playerX-12, playerY-15, 8, 8);
+        ctx.fillRect(playerX+4, playerY-15, 8, 8);
+        ctx.fillStyle = '#1f2a2a';
+        ctx.fillRect(playerX-10, playerY-13, 4, 4);
+        ctx.fillRect(playerX+6, playerY-13, 4, 4);
+        if (shieldActive) {
+            ctx.beginPath();
+            ctx.arc(playerX, playerY-10, 32, 0, Math.PI*2);
+            ctx.strokeStyle = '#44ccff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+    }
+    
+    function drawUItext() {
+        ctx.font = 'bold 20monospace';
+        ctx.fillStyle = '#fff2b5';
+        ctx.shadowBlur = 0;
+        ctx.fillText('⚡ x' + (boostActive ? '2' : '1'), 15, 50);
+        if (isJumping) ctx.fillText('ПРЫЖОК', cw-100, 70);
+        if (isRolling) ctx.fillText('КУВЫРОК', cw-100, 70);
+    }
+    
+    // ---------- ИГРОВОЙ ЦИКЛ ----------
+    function gameLoop() {
+        if (!gameActive) {
+            drawBackground();
+            drawObjects();
+            drawPlayer();
+            drawUItext();
+            ctx.font = 'bold 28px system-ui';
+            ctx.fillStyle = '#ff8844';
+            ctx.fillText('GAME OVER', cw/2-90, ch/2);
+            return;
+        }
+        // обновления
+        updateBonuses();
+        updateObjects();
+        applyMagnet();
+        checkCollisions();
+        if (!gameActive) {
+            saveBestIfNeeded();
+            let total = Math.floor(distance) + coinsCollected;
+            finalScoreSpan.innerText = total;
+            gameOverlay.style.visibility = 'visible';
+            playCrashSound();
+            return;
+        }
+        dynamicSpawning();
+        increaseDifficulty();
+        // отрисовка
+        drawBackground();
+        drawObjects();
+        drawPlayer();
+        drawUItext();
+    }
+    
+    // ---------- УПРАВЛЕНИЕ ----------
+    function handleKey(e) {
+        if (!gameActive) return;
+        const key = e.key;
+        if (key === 'ArrowLeft') changeLane(-1);
+        else if (key === 'ArrowRight') changeLane(1);
+        else if (key === 'ArrowUp') startJump();
+        else if (key === 'ArrowDown') startRoll();
+        e.preventDefault();
+    }
+    
+    // свайпы
+    let touchStartX = 0, touchStartY = 0;
+    function onTouchStart(e) {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        touchStartX = touch.clientX - rect.left;
+        touchStartY = touch.clientY - rect.top;
+    }
+    function onTouchEnd(e) {
+        if (!gameActive) return;
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const endX = e.changedTouches[0].clientX - rect.left;
+        const endY = e.changedTouches[0].clientY - rect.top;
+        const dx = endX - touchStartX;
+        const dy = endY - touchStartY;
+        if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            if (dx > 0) changeLane(1);
+            else changeLane(-1);
+        } else {
+            if (dy > 0) startRoll();
+            else startJump();
+        }
+    }
+    
+    // сброс игры
+    function restartGame() {
+        gameActive = true;
+        currentLane = 1;
+        distance = 0;
+        coinsCollected = 0;
+        score = 0;
+        objects = [];
+        baseSpeed = 4.2;
+        speedMultiplier = 1.0;
+        currentSpeed = baseSpeed;
+        magnetActive = false; magnetTimer = 0;
+        shieldActive = false; shieldTimer = 0;
+        boostActive = false; boostTimer = 0;
+        isJumping = false; isRolling = false;
+        frameCounter = 0;
+        updateUI();
+        gameOverlay.style.visibility = 'hidden';
+        // небольшая инициализация
+        for(let i=0;i<2;i++) spawnObject();
+    }
+    
+    function mainMenu() {
+        restartGame();
+        gameOverlay.style.visibility = 'hidden';
+    }
+    
+    // привязка событий
+    window.addEventListener('keydown', handleKey);
+    canvas.addEventListener('touchstart', onTouchStart);
+    canvas.addEventListener('touchend', onTouchEnd);
+    canvas.addEventListener('touchmove', (e) => e.preventDefault());
+    document.getElementById('restartBtn').addEventListener('click', () => { restartGame(); });
+    document.getElementById('mainMenuBtn').addEventListener('click', () => { mainMenu(); });
+    
+    // запуск цикла
+    bestScore = localStorage.getItem('subwayBest') ? parseInt(localStorage.getItem('subwayBest')) : 0;
+    document.getElementById('bestValue').innerText = bestScore;
+    restartGame();
+    setInterval(() => { gameLoop(); }, 1000/60);
+    // начальные объекты
+    for(let i=0;i<3;i++) spawnObject();
+</script>
+</body>
